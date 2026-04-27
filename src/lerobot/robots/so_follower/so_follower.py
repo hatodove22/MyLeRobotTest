@@ -63,8 +63,17 @@ class SOFollower(Robot):
         self.cameras = make_cameras_from_configs(config.cameras)
 
     @property
-    def _motors_ft(self) -> dict[str, type]:
+    def _motor_action_ft(self) -> dict[str, type]:
         return {f"{motor}.pos": float for motor in self.bus.motors}
+
+    @property
+    def _motor_observation_ft(self) -> dict[str, type]:
+        features = dict(self._motor_action_ft)
+        if self.config.include_present_load:
+            features.update({f"{motor}.load": float for motor in self.bus.motors})
+        if self.config.include_present_current:
+            features.update({f"{motor}.current": float for motor in self.bus.motors})
+        return features
 
     @property
     def _cameras_ft(self) -> dict[str, tuple]:
@@ -74,11 +83,11 @@ class SOFollower(Robot):
 
     @cached_property
     def observation_features(self) -> dict[str, type | tuple]:
-        return {**self._motors_ft, **self._cameras_ft}
+        return {**self._motor_observation_ft, **self._cameras_ft}
 
     @cached_property
     def action_features(self) -> dict[str, type]:
-        return self._motors_ft
+        return self._motor_action_ft
 
     @property
     def is_connected(self) -> bool:
@@ -182,6 +191,14 @@ class SOFollower(Robot):
         obs_dict = {f"{motor}.pos": val for motor, val in obs_dict.items()}
         dt_ms = (time.perf_counter() - start) * 1e3
         logger.debug(f"{self} read state: {dt_ms:.1f}ms")
+
+        if self.config.include_present_load:
+            loads = self.bus.sync_read("Present_Load")
+            obs_dict.update({f"{motor}.load": val for motor, val in loads.items()})
+
+        if self.config.include_present_current:
+            currents = self.bus.sync_read("Present_Current")
+            obs_dict.update({f"{motor}.current": val for motor, val in currents.items()})
 
         # Capture images from cameras
         for cam_key, cam in self.cameras.items():

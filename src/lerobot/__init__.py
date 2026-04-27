@@ -43,6 +43,7 @@ available_extras: dict[str, list[str]] = {
         "lerobot-find-cameras",
         "lerobot-find-joint-limits",
         "lerobot-setup-motors",
+        "lerobot-cluster-ik",
     ],
     "core_scripts": ["lerobot-record", "lerobot-replay", "lerobot-teleoperate"],
     "evaluation": ["lerobot-eval"],

@@ -94,11 +94,16 @@ from lerobot.teleoperators import (  # noqa: F401
     koch_leader,
     make_teleoperator_from_config,
     omx_leader,
+    osc_joint_teleop,
     openarm_leader,
     openarm_mini,
     reachy2_teleoperator,
     so_leader,
     unitree_g1,
+)
+from lerobot.teleoperators.utils import (
+    enable_robot_feedback_observation_flags,
+    prepare_feedback_from_observation,
 )
 from lerobot.utils.import_utils import register_third_party_plugins
 from lerobot.utils.robot_utils import precise_sleep
@@ -163,8 +168,9 @@ def teleop_loop(
         # given that it is the identity processor as default
         obs = robot.get_observation()
 
-        if robot.name == "unitree_g1":
-            teleop.send_feedback(obs)
+        feedback = prepare_feedback_from_observation(obs, teleop.feedback_features)
+        if feedback:
+            teleop.send_feedback(feedback)
 
         # Get teleop action
         raw_action = teleop.get_action()
@@ -218,6 +224,7 @@ def teleoperate(cfg: TeleoperateConfig):
     )
 
     teleop = make_teleoperator_from_config(cfg.teleop)
+    enable_robot_feedback_observation_flags(cfg.robot, teleop.feedback_features)
     robot = make_robot_from_config(cfg.robot)
     teleop_action_processor, robot_action_processor, robot_observation_processor = make_default_processors()
 

@@ -111,6 +111,7 @@ hardware = [
     "pynput>=1.7.8,<1.9.0",
     "pyserial>=3.5,<4.0",
     "deepdiff>=7.0.1,<9.0.0",
+    "python-osc>=1.9.3,<2.0.0",
 ]
 viz = [
     "rerun-sdk>=0.24.0,<0.27.0",
@@ -260,6 +261,7 @@ lerobot-record="lerobot.scripts.lerobot_record:main"
 lerobot-replay="lerobot.scripts.lerobot_replay:main"
 lerobot-setup-motors="lerobot.scripts.lerobot_setup_motors:main"
 lerobot-teleoperate="lerobot.scripts.lerobot_teleoperate:main"
+lerobot-cluster-ik="lerobot.scripts.lerobot_cluster_ik:main"
 lerobot-eval="lerobot.scripts.lerobot_eval:main"
 lerobot-train="lerobot.scripts.lerobot_train:main"
 lerobot-train-tokenizer="lerobot.scripts.lerobot_train_tokenizer:main"

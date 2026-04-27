@@ -27,7 +27,7 @@ from lerobot.scripts.lerobot_replay import DatasetReplayConfig, ReplayConfig, re
 from lerobot.scripts.lerobot_teleoperate import TeleoperateConfig, teleoperate
 from tests.fixtures.constants import DUMMY_REPO_ID
 from tests.mocks.mock_robot import MockRobotConfig
-from tests.mocks.mock_teleop import MockTeleopConfig
+from tests.mocks.mock_teleop import MockTeleop, MockTeleopConfig
 
 
 def test_calibrate():
@@ -45,6 +45,23 @@ def test_teleoperate():
         teleop_time_s=0.1,
     )
     teleoperate(cfg)
+
+
+def test_teleoperate_sends_filtered_feedback():
+    robot_cfg = MockRobotConfig(random_values=False, static_values=[1.0, 2.0, 3.0])
+    teleop_cfg = MockTeleopConfig(random_values=False, static_values=[0.0, 0.0, 0.0])
+    cfg = TeleoperateConfig(
+        robot=robot_cfg,
+        teleop=teleop_cfg,
+        teleop_time_s=0.05,
+    )
+
+    with patch.object(MockTeleop, "send_feedback", autospec=True) as mock_send_feedback:
+        teleoperate(cfg)
+
+    assert mock_send_feedback.called
+    _, feedback = mock_send_feedback.call_args[0]
+    assert feedback == {"motor_1.pos": 1.0, "motor_2.pos": 2.0, "motor_3.pos": 3.0}
 
 
 def test_record_and_resume(tmp_path):

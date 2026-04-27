@@ -1,177 +1,143 @@
-<p align="center">
-  <img alt="LeRobot, Hugging Face Robotics Library" src="./media/readme/lerobot-logo-thumbnail.png" width="100%">
-</p>
+# MyLeRobotTest
 
-<div align="center">
+Windows PC 上で Cluster から OSC 送信されるエンドポイント座標を受け取り、SO101 follower arm の IK を解いて動かすための LeRobot カスタム環境です。
 
-[![Tests](https://github.com/huggingface/lerobot/actions/workflows/latest_deps_tests.yml/badge.svg?branch=main)](https://github.com/huggingface/lerobot/actions/workflows/latest_deps_tests.yml?query=branch%3Amain)
-[![Tests](https://github.com/huggingface/lerobot/actions/workflows/docker_publish.yml/badge.svg?branch=main)](https://github.com/huggingface/lerobot/actions/workflows/docker_publish.yml?query=branch%3Amain)
-[![Python versions](https://img.shields.io/pypi/pyversions/lerobot)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/huggingface/lerobot/blob/main/LICENSE)
-[![Status](https://img.shields.io/pypi/status/lerobot)](https://pypi.org/project/lerobot/)
-[![Version](https://img.shields.io/pypi/v/lerobot)](https://pypi.org/project/lerobot/)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v2.1-ff69b4.svg)](https://github.com/huggingface/lerobot/blob/main/CODE_OF_CONDUCT.md)
-[![Discord](https://img.shields.io/badge/Discord-Join_Us-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/q8Dzzpym3f)
+ベースは Hugging Face LeRobot で、SO101 の Windows 実機運用向けに以下を追加しています。
 
-</div>
+- `lerobot-cluster-ik`: Cluster OSC `/ik/target` を受信して SO101 follower を動かす CLI
+- Windows の COM ポート確認用スクリプト
+- SO101 follower/leader 周辺の Windows 対応変更
+- `placo` が Windows で入らない場合の URDF 直読み IK フォールバック
+- OSC joint teleop 関連の追加
 
-**LeRobot** aims to provide models, datasets, and tools for real-world robotics in PyTorch. The goal is to lower the barrier to entry so that everyone can contribute to and benefit from shared datasets and pretrained models.
+## 環境
 
-🤗 A hardware-agnostic, Python-native interface that standardizes control across diverse platforms, from low-cost arms (SO-100) to humanoids.
+- Windows
+- Python 3.12
+- `uv`
+- LeRobot local checkout
+- SO101 follower arm
+- Cluster から OSC で `/ik/target` を送信
 
-🤗 A standardized, scalable LeRobotDataset format (Parquet + MP4 or images) hosted on the Hugging Face Hub, enabling efficient storage, streaming and visualization of massive robotic datasets.
+## セットアップ
 
-🤗 State-of-the-art policies that have been shown to transfer to the real-world ready for training and deployment.
-
-🤗 Comprehensive support for the open-source ecosystem to democratize physical AI.
-
-## Quick Start
-
-LeRobot can be installed directly from PyPI.
-
-```bash
-pip install lerobot
-lerobot-info
+```powershell
+Set-Location C:\Users\tesul\LeRobot
+uv sync --locked --extra core_scripts --extra hardware
 ```
 
-> [!IMPORTANT]
-> For detailed installation guide, please see the [Installation Documentation](https://huggingface.co/docs/lerobot/installation).
+開発ツール込みで確認する場合:
 
-## Robots & Control
-
-<div align="center">
-  <img src="./media/readme/robots_control_video.webp" width="640px" alt="Reachy 2 Demo">
-</div>
-
-LeRobot provides a unified `Robot` class interface that decouples control logic from hardware specifics. It supports a wide range of robots and teleoperation devices.
-
-```python
-from lerobot.robots.myrobot import MyRobot
-
-# Connect to a robot
-robot = MyRobot(config=...)
-robot.connect()
-
-# Read observation and send action
-obs = robot.get_observation()
-action = model.select_action(obs)
-robot.send_action(action)
+```powershell
+uv sync --locked --extra test --extra dev
 ```
 
-**Supported Hardware:** SO100, LeKiwi, Koch, HopeJR, OMX, EarthRover, Reachy2, Gamepads, Keyboards, Phones, OpenARM, Unitree G1.
+## SO101 URDF
 
-While these devices are natively integrated into the LeRobot codebase, the library is designed to be extensible. You can easily implement the Robot interface to utilize LeRobot's data collection, training, and visualization tools for your own custom robot.
+IK には SO101 の URDF が必要です。このリポジトリには URDF 本体は含めず、TheRobotStudio の SO-ARM100 repo を別途 clone して使います。
 
-For detailed hardware setup guides, see the [Hardware Documentation](https://huggingface.co/docs/lerobot/integrate_hardware).
-
-## LeRobot Dataset
-
-To solve the data fragmentation problem in robotics, we utilize the **LeRobotDataset** format.
-
-- **Structure:** Synchronized MP4 videos (or images) for vision and Parquet files for state/action data.
-- **HF Hub Integration:** Explore thousands of robotics datasets on the [Hugging Face Hub](https://huggingface.co/lerobot).
-- **Tools:** Seamlessly delete episodes, split by indices/fractions, add/remove features, and merge multiple datasets.
-
-```python
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
-
-# Load a dataset from the Hub
-dataset = LeRobotDataset("lerobot/aloha_mobile_cabinet")
-
-# Access data (automatically handles video decoding)
-episode_index=0
-print(f"{dataset[episode_index]['action'].shape=}\n")
+```powershell
+Set-Location C:\Users\tesul
+git clone https://github.com/TheRobotStudio/SO-ARM100.git
 ```
 
-Learn more about it in the [LeRobotDataset Documentation](https://huggingface.co/docs/lerobot/lerobot-dataset-v3)
+使用する URDF:
 
-## SoTA Models
-
-LeRobot implements state-of-the-art policies in pure PyTorch, covering Imitation Learning, Reinforcement Learning, and Vision-Language-Action (VLA) models, with more coming soon. It also provides you with the tools to instrument and inspect your training process.
-
-<p align="center">
-  <img alt="Gr00t Architecture" src="./media/readme/VLA_architecture.jpg" width="640px">
-</p>
-
-Training a policy is as simple as running a script configuration:
-
-```bash
-lerobot-train \
-  --policy=act \
-  --dataset.repo_id=lerobot/aloha_mobile_cabinet
+```text
+C:\Users\tesul\SO-ARM100\Simulation\SO101\so101_new_calib.urdf
 ```
 
-| Category                   | Models                                                                                                                                                                                                                  |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Imitation Learning**     | [ACT](./docs/source/policy_act_README.md), [Diffusion](./docs/source/policy_diffusion_README.md), [VQ-BeT](./docs/source/policy_vqbet_README.md), [Multitask DiT Policy](./docs/source/policy_multi_task_dit_README.md) |
-| **Reinforcement Learning** | [HIL-SERL](./docs/source/hilserl.mdx), [TDMPC](./docs/source/policy_tdmpc_README.md) & QC-FQL (coming soon)                                                                                                             |
-| **VLAs Models**            | [Pi0Fast](./docs/source/pi0fast.mdx), [Pi0.5](./docs/source/pi05.mdx), [GR00T N1.5](./docs/source/policy_groot_README.md), [SmolVLA](./docs/source/policy_smolvla_README.md), [XVLA](./docs/source/xvla.mdx)            |
+## Cluster OSC → SO101 IK
 
-Similarly to the hardware, you can easily implement your own policy & leverage LeRobot's data collection, training, and visualization tools, and share your model to the HF Hub
+Cluster 側は以下の形式で送信します。
 
-For detailed policy setup guides, see the [Policy Documentation](https://huggingface.co/docs/lerobot/bring_your_own_policies).
+- Address: `/ik/target`
+- Values: `float x, float y, float z`
+- Port: デフォルト `9000`
 
-## Inference & Evaluation
+起動コマンド:
 
-Evaluate your policies in simulation or on real hardware using the unified evaluation script. LeRobot supports standard benchmarks like **LIBERO**, **MetaWorld** and more to come.
+```powershell
+Set-Location C:\Users\tesul\LeRobot
 
-```bash
-# Evaluate a policy on the LIBERO benchmark
-lerobot-eval \
-  --policy.path=lerobot/pi0_libero_finetuned \
-  --env.type=libero \
-  --env.task=libero_object \
-  --eval.n_episodes=10
+uv run lerobot-cluster-ik `
+  --robot.type=so101_follower `
+  --robot.port=COM5 `
+  --robot.id=so101_cluster `
+  --robot.max_relative_target=10 `
+  --urdf_path=C:/Users/tesul/SO-ARM100/Simulation/SO101/so101_new_calib.urdf `
+  --target_frame_name=gripper_frame_link `
+  --host=127.0.0.1 `
+  --recv_port=9000
 ```
 
-Learn how to implement your own simulation environment or benchmark and distribute it from the HF Hub by following the [EnvHub Documentation](https://huggingface.co/docs/lerobot/envhub)
+初回起動時に SO101 のキャリブレーションが走ります。保存先は通常:
 
-## Resources
-
-- **[Documentation](https://huggingface.co/docs/lerobot/index):** The complete guide to tutorials & API.
-- **[Chinese Tutorials: LeRobot+SO-ARM101中文教程-同济子豪兄](https://zihao-ai.feishu.cn/wiki/space/7589642043471924447)** Detailed doc for assembling, teleoperate, dataset, train, deploy. Verified by Seed Studio and 5 global hackathon players.
-- **[Discord](https://discord.gg/q8Dzzpym3f):** Join the `LeRobot` server to discuss with the community.
-- **[X](https://x.com/LeRobotHF):** Follow us on X to stay up-to-date with the latest developments.
-- **[Robot Learning Tutorial](https://huggingface.co/spaces/lerobot/robot-learning-tutorial):** A free, hands-on course to learn robot learning using LeRobot.
-
-## Citation
-
-If you use LeRobot in your project, please cite the GitHub repository to acknowledge the ongoing development and contributors:
-
-```bibtex
-@misc{cadene2024lerobot,
-    author = {Cadene, Remi and Alibert, Simon and Soare, Alexander and Gallouedec, Quentin and Zouitine, Adil and Palma, Steven and Kooijmans, Pepijn and Aractingi, Michel and Shukor, Mustafa and Aubakirova, Dana and Russi, Martino and Capuano, Francesco and Pascal, Caroline and Choghari, Jade and Moss, Jess and Wolf, Thomas},
-    title = {LeRobot: State-of-the-art Machine Learning for Real-World Robotics in Pytorch},
-    howpublished = "\url{https://github.com/huggingface/lerobot}",
-    year = {2024}
-}
+```text
+C:\Users\tesul\.cache\huggingface\lerobot\calibration\robots\so_follower\so101_cluster.json
 ```
 
-If you are referencing our research or the academic paper, please also cite our ICLR publication:
+同じ `--robot.id=so101_cluster` を使う限り、次回以降は保存済みキャリブレーションを使います。
 
-<details>
-<summary><b>ICLR 2026 Paper</b></summary>
+## 座標系
 
-```bibtex
-@inproceedings{cadenelerobot,
-  title={LeRobot: An Open-Source Library for End-to-End Robot Learning},
-  author={Cadene, Remi and Alibert, Simon and Capuano, Francesco and Aractingi, Michel and Zouitine, Adil and Kooijmans, Pepijn and Choghari, Jade and Russi, Martino and Pascal, Caroline and Palma, Steven and Shukor, Mustafa and Moss, Jess and Soare, Alexander and Aubakirova, Dana and Lhoest, Quentin and Gallou\'edec, Quentin and Wolf, Thomas},
-  booktitle={The Fourteenth International Conference on Learning Representations},
-  year={2026},
-  url={https://arxiv.org/abs/2602.22818}
-}
+デフォルトの変換は Cluster/Unity 想定です。
+
+- Cluster: `x=右`, `y=上`, `z=前`
+- SO101 URDF: `x=前`, `y=左`, `z=上`
+
+そのためデフォルトは:
+
+```text
+axis_map = [z, -x, y]
 ```
 
-</details>
+向きが逆に感じる場合は起動オプションで調整します。
 
-## Contribute
+```powershell
+--axis_map='[z,x,y]'
+```
 
-We welcome contributions from everyone in the community! To get started, please read our [CONTRIBUTING.md](https://github.com/huggingface/lerobot/blob/main/CONTRIBUTING.md) guide. Whether you're adding a new feature, improving documentation, or fixing a bug, your help and feedback are invaluable. We're incredibly excited about the future of open-source robotics and can't wait to work with you on what's next—thank you for your support!
+動きが大きすぎる場合:
 
-<p align="center">
-  <img alt="SO101 Video" src="./media/readme/so100_video.webp" width="640px">
-</p>
+```powershell
+--scale=0.5
+```
 
-<div align="center">
-<sub>Built by the <a href="https://huggingface.co/lerobot">LeRobot</a> team at <a href="https://huggingface.co">Hugging Face</a> with ❤️</sub>
-</div>
+1 フレームの最大 EE 移動量を抑える場合:
+
+```powershell
+--max_ee_step_m=0.01
+```
+
+## COM ポート確認
+
+```powershell
+.\scripts\windows\Show-SerialPorts.ps1
+```
+
+または LeRobot 標準の対話式検出:
+
+```powershell
+uv run lerobot-find-port
+```
+
+## テスト
+
+今回追加した Cluster IK 周辺のテスト:
+
+```powershell
+uv run pytest tests\scripts\test_lerobot_cluster_ik.py -q
+```
+
+Ruff:
+
+```powershell
+uv run --extra dev ruff check src\lerobot\scripts\lerobot_cluster_ik.py tests\scripts\test_lerobot_cluster_ik.py
+```
+
+## 注意
+
+- `.venv` やローカルキャリブレーションキャッシュは Git 管理対象ではありません。
+- `placo` は Windows で依存ビルドに失敗することがあります。この環境では `lerobot-cluster-ik` が URDF 直読み IK にフォールバックします。
+- 実機を動かす前に、SO101 が机や人に干渉しない位置にあることを確認してください。

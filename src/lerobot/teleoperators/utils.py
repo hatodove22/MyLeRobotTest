@@ -99,8 +99,36 @@ def make_teleoperator_from_config(config: TeleoperatorConfig) -> "Teleoperator":
         from .openarm_mini import OpenArmMini
 
         return OpenArmMini(config)
+    elif config.type == "osc_joint_teleop":
+        from .osc_joint_teleop import OscJointTeleop
+
+        return OscJointTeleop(config)
     else:
         try:
             return cast("Teleoperator", make_device_from_device_class(config))
         except Exception as e:
             raise ValueError(f"Error creating robot with config {config}: {e}") from e
+
+
+def prepare_feedback_from_observation(
+    observation: dict[str, object], feedback_features: dict[str, object]
+) -> dict[str, object]:
+    if not feedback_features:
+        return {}
+
+    return {key: observation[key] for key in feedback_features if key in observation}
+
+
+def enable_robot_feedback_observation_flags(robot_config: object, feedback_features: dict[str, object]) -> None:
+    if not feedback_features:
+        return
+
+    if hasattr(robot_config, "include_present_load") and any(
+        key.endswith(".load") for key in feedback_features
+    ):
+        robot_config.include_present_load = True
+
+    if hasattr(robot_config, "include_present_current") and any(
+        key.endswith(".current") for key in feedback_features
+    ):
+        robot_config.include_present_current = True

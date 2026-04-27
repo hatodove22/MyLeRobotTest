@@ -259,10 +259,19 @@ class FeetechMotorsBus(SerialMotorsBus):
 
     def write_calibration(self, calibration_dict: dict[str, MotorCalibration], cache: bool = True) -> None:
         for motor, calibration in calibration_dict.items():
+            model = self._get_motor_model(motor)
+            resolution = self.model_resolution_table[model]
+            range_min = calibration.range_min % resolution
+            range_max = calibration.range_max % resolution
+
             if self.protocol_version == 0:
                 self.write("Homing_Offset", motor, calibration.homing_offset)
-            self.write("Min_Position_Limit", motor, calibration.range_min)
-            self.write("Max_Position_Limit", motor, calibration.range_max)
+
+            # Present_Position may be represented one full encoder turn away from the
+            # canonical 0..resolution-1 range after homing-offset changes. Min/Max limit
+            # registers, however, expect raw unsigned encoder values.
+            self.write("Min_Position_Limit", motor, range_min)
+            self.write("Max_Position_Limit", motor, range_max)
 
         if cache:
             self.calibration = calibration_dict
@@ -275,8 +284,34 @@ class FeetechMotorsBus(SerialMotorsBus):
         half_turn_homings: dict[NameOrID, Value] = {}
         for motor, pos in positions.items():
             model = self._get_motor_model(motor)
-            max_res = self.model_resolution_table[model] - 1
-            half_turn_homings[motor] = pos - int(max_res / 2)
+            resolution = self.model_resolution_table[model]
+            center = int((resolution - 1) / 2)
+            homing = pos - center
+
+            # Feetech stores Homing_Offset as sign-magnitude. For STS3215, the 11-bit
+            # magnitude tops out at 2047. When the motor is assembled one full turn away
+            # from the expected midpoint, choose an equivalent offset modulo the encoder
+            # resolution before falling back to a one-tick clamp at the exact boundary.
+            encoding_table = self.model_encoding_table.get(model, {})
+            if "Homing_Offset" in encoding_table:
+                sign_bit = encoding_table["Homing_Offset"]
+                max_magnitude = (1 << sign_bit) - 1
+                wrapped_homing = min(
+                    (homing - resolution, homing, homing + resolution),
+                    key=abs,
+                )
+                if abs(wrapped_homing) <= max_magnitude:
+                    homing = wrapped_homing
+                elif abs(homing) > max_magnitude:
+                    logger.warning(
+                        "Clamping Homing_Offset for %s from %s to fit Feetech sign-magnitude range +/- %s.",
+                        motor,
+                        homing,
+                        max_magnitude,
+                    )
+                    homing = max(-max_magnitude, min(max_magnitude, homing))
+
+            half_turn_homings[motor] = homing
 
         return half_turn_homings
 

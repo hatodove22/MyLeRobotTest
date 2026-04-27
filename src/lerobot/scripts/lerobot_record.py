@@ -138,6 +138,7 @@ from lerobot.teleoperators import (  # noqa: F401
     koch_leader,
     make_teleoperator_from_config,
     omx_leader,
+    osc_joint_teleop,
     openarm_leader,
     openarm_mini,
     reachy2_teleoperator,
@@ -145,6 +146,10 @@ from lerobot.teleoperators import (  # noqa: F401
     unitree_g1,
 )
 from lerobot.teleoperators.keyboard import KeyboardTeleop
+from lerobot.teleoperators.utils import (
+    enable_robot_feedback_observation_flags,
+    prepare_feedback_from_observation,
+)
 from lerobot.utils.constants import ACTION, OBS_STR
 from lerobot.utils.device_utils import get_safe_torch_device
 from lerobot.utils.feature_utils import build_dataset_frame, combine_feature_dicts
@@ -430,8 +435,9 @@ def record_loop(
 
         elif policy is None and isinstance(teleop, Teleoperator):
             act = teleop.get_action()
-            if robot.name == "unitree_g1":
-                teleop.send_feedback(obs)
+            feedback = prepare_feedback_from_observation(obs, teleop.feedback_features)
+            if feedback:
+                teleop.send_feedback(feedback)
 
             # Applies a pipeline to the raw teleop action, default is IdentityProcessor
             act_processed_teleop = teleop_action_processor((act, obs))
@@ -439,6 +445,10 @@ def record_loop(
             robot_action_to_send = robot_action_processor((act_processed_teleop, obs))
 
         elif policy is None and isinstance(teleop, list):
+            if teleop_arm is not None:
+                feedback = prepare_feedback_from_observation(obs, teleop_arm.feedback_features)
+                if feedback:
+                    teleop_arm.send_feedback(feedback)
             arm_action = teleop_arm.get_action()
             arm_action = {f"arm_{k}": v for k, v in arm_action.items()}
             keyboard_action = teleop_keyboard.get_action()
@@ -499,8 +509,10 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
         else cfg.display_compressed_images
     )
 
-    robot = make_robot_from_config(cfg.robot)
     teleop = make_teleoperator_from_config(cfg.teleop) if cfg.teleop is not None else None
+    if teleop is not None:
+        enable_robot_feedback_observation_flags(cfg.robot, teleop.feedback_features)
+    robot = make_robot_from_config(cfg.robot)
 
     teleop_action_processor, robot_action_processor, robot_observation_processor = make_default_processors()
 

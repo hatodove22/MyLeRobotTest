@@ -16,6 +16,7 @@
 
 import logging
 import time
+from functools import cached_property
 
 from lerobot.motors import Motor, MotorCalibration, MotorNormMode
 from lerobot.motors.feetech import (
@@ -52,14 +53,23 @@ class SOLeader(Teleoperator):
             },
             calibration=self.calibration,
         )
+        self._feedback_goal_deltas: dict[str, float] = {}
+        self._feedback_torque_enabled = False
+        self._feedback_load_boost = 0.25
 
     @property
     def action_features(self) -> dict[str, type]:
         return {f"{motor}.pos": float for motor in self.bus.motors}
 
-    @property
+    @cached_property
     def feedback_features(self) -> dict[str, type]:
-        return {}
+        if not self.config.feedback_enabled:
+            return {}
+
+        features = {f"{motor}.pos": float for motor in self.config.feedback_motors}
+        if self.config.feedback_use_load:
+            features.update({f"{motor}.load": float for motor in self.config.feedback_motors})
+        return features
 
     @property
     def is_connected(self) -> bool:
@@ -125,6 +135,7 @@ class SOLeader(Teleoperator):
         print(f"Calibration saved to {self.calibration_fpath}")
 
     def configure(self) -> None:
+        self._disable_feedback()
         self.bus.disable_torque()
         self.bus.configure_motors()
         for motor in self.bus.motors:
@@ -145,12 +156,76 @@ class SOLeader(Teleoperator):
         logger.debug(f"{self} read action: {dt_ms:.1f}ms")
         return action
 
+    def _resolve_feedback_param(self, param: float | dict[str, float], motor: str) -> float:
+        if isinstance(param, dict):
+            return float(param.get(motor, 0.0))
+        return float(param)
+
+    def _enable_feedback(self) -> None:
+        if self._feedback_torque_enabled or not self.config.feedback_enabled:
+            return
+        self.bus.enable_torque(self.config.feedback_motors)
+        self._feedback_torque_enabled = True
+
+    def _disable_feedback(self) -> None:
+        if not self._feedback_torque_enabled:
+            self._feedback_goal_deltas.clear()
+            return
+
+        try:
+            self.bus.disable_torque(self.config.feedback_motors)
+        finally:
+            self._feedback_goal_deltas.clear()
+            self._feedback_torque_enabled = False
+
     def send_feedback(self, feedback: dict[str, float]) -> None:
-        # TODO: Implement force feedback
-        raise NotImplementedError
+        if not self.config.feedback_enabled:
+            self._disable_feedback()
+            return
+
+        follower_targets = {
+            motor: float(feedback[f"{motor}.pos"])
+            for motor in self.config.feedback_motors
+            if f"{motor}.pos" in feedback
+        }
+        if not follower_targets:
+            self._disable_feedback()
+            return
+
+        self._enable_feedback()
+        leader_positions = self.bus.sync_read("Present_Position", self.config.feedback_motors)
+        goal_positions: dict[str, float] = {}
+        for motor, follower_position in follower_targets.items():
+            leader_position = float(leader_positions[motor])
+            error = follower_position - leader_position
+            deadband = self._resolve_feedback_param(self.config.feedback_deadband_deg, motor)
+            if abs(error) <= deadband:
+                desired_delta = 0.0
+            else:
+                desired_delta = error * self._resolve_feedback_param(self.config.feedback_gain, motor)
+                if self.config.feedback_use_load:
+                    load = abs(float(feedback.get(f"{motor}.load", 0.0)))
+                    desired_delta *= 1.0 + min(load / 1000.0, 1.0) * self._feedback_load_boost
+
+            max_delta = self._resolve_feedback_param(self.config.feedback_max_delta, motor)
+            desired_delta = max(-max_delta, min(max_delta, desired_delta))
+
+            previous_delta = self._feedback_goal_deltas.get(motor, 0.0)
+            rate_limit = self._resolve_feedback_param(self.config.feedback_rate_limit, motor)
+            delta_step = desired_delta - previous_delta
+            if abs(delta_step) > rate_limit:
+                delta_step = rate_limit if delta_step > 0 else -rate_limit
+
+            new_delta = previous_delta + delta_step
+            self._feedback_goal_deltas[motor] = new_delta
+            goal_positions[motor] = leader_position + new_delta
+
+        if goal_positions:
+            self.bus.sync_write("Goal_Position", goal_positions)
 
     @check_if_not_connected
     def disconnect(self) -> None:
+        self._disable_feedback()
         self.bus.disconnect()
         logger.info(f"{self} disconnected.")
 

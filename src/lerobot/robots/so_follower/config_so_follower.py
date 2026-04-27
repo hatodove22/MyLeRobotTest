@@ -41,6 +41,10 @@ class SOFollowerConfig:
     # Set to `True` for backward compatibility with previous policies/dataset
     use_degrees: bool = True
 
+    # Include raw motor load/current readings in observations for teleop feedback loops.
+    include_present_load: bool = False
+    include_present_current: bool = False
+
 
 @RobotConfig.register_subclass("so101_follower")
 @RobotConfig.register_subclass("so100_follower")

@@ -429,6 +429,77 @@ def test_set_half_turn_homings(mock_motors, dummy_motors):
     assert all(mock_motors.stubs[stub].wait_called() for stub in write_homing_stubs)
 
 
+def test_set_half_turn_homings_clamps_boundary_value(mock_motors, dummy_motors):
+    """
+    Feetech Homing_Offset uses 11-bit sign-magnitude encoding, so the largest
+    representable magnitude is 2047. A motor sitting at raw position 4095 would
+    otherwise produce an offset of 2048 and fail calibration.
+    """
+    current_positions = {
+        1: 4095,
+        2: 0,
+        3: 2047,
+    }
+    expected_homings = {
+        1: 2047,
+        2: -2047,
+        3: 0,
+    }
+    read_pos_stub = mock_motors.build_sync_read_stub(
+        *STS_SMS_SERIES_CONTROL_TABLE["Present_Position"], current_positions
+    )
+    write_homing_stubs = []
+    for id_, homing in expected_homings.items():
+        encoded_homing = encode_sign_magnitude(homing, 11)
+        stub = mock_motors.build_write_stub(
+            *STS_SMS_SERIES_CONTROL_TABLE["Homing_Offset"], id_, encoded_homing
+        )
+        write_homing_stubs.append(stub)
+
+    bus = FeetechMotorsBus(port=mock_motors.port, motors=dummy_motors)
+    bus.connect(handshake=False)
+    bus.reset_calibration = MagicMock()
+
+    bus.set_half_turn_homings()
+
+    bus.reset_calibration.assert_called_once()
+    assert mock_motors.stubs[read_pos_stub].called
+    assert all(mock_motors.stubs[stub].wait_called() for stub in write_homing_stubs)
+
+
+def test_set_half_turn_homings_wraps_equivalent_offset(mock_motors, dummy_motors):
+    current_positions = {
+        1: -903,
+        2: 4380,
+        3: 2047,
+    }
+    expected_homings = {
+        1: 1146,   # -2950 + 4096
+        2: -1763,  # 2333 - 4096
+        3: 0,
+    }
+    read_pos_stub = mock_motors.build_sync_read_stub(
+        *STS_SMS_SERIES_CONTROL_TABLE["Present_Position"], current_positions
+    )
+    write_homing_stubs = []
+    for id_, homing in expected_homings.items():
+        encoded_homing = encode_sign_magnitude(homing, 11)
+        stub = mock_motors.build_write_stub(
+            *STS_SMS_SERIES_CONTROL_TABLE["Homing_Offset"], id_, encoded_homing
+        )
+        write_homing_stubs.append(stub)
+
+    bus = FeetechMotorsBus(port=mock_motors.port, motors=dummy_motors)
+    bus.connect(handshake=False)
+    bus.reset_calibration = MagicMock()
+
+    bus.set_half_turn_homings()
+
+    bus.reset_calibration.assert_called_once()
+    assert mock_motors.stubs[read_pos_stub].called
+    assert all(mock_motors.stubs[stub].wait_called() for stub in write_homing_stubs)
+
+
 def test_record_ranges_of_motion(mock_motors, dummy_motors):
     positions = {
         1: [351, 42, 1337],
@@ -457,3 +528,50 @@ def test_record_ranges_of_motion(mock_motors, dummy_motors):
     assert mock_motors.stubs[stub].calls == 3
     assert mins == expected_mins
     assert maxes == expected_maxes
+
+
+def test_write_calibration_wraps_position_limits(mock_motors, dummy_motors):
+    calibration = {
+        "dummy_1": MotorCalibration(id=1, drive_mode=0, homing_offset=1146, range_min=-3243, range_max=-1040),
+        "dummy_2": MotorCalibration(id=2, drive_mode=0, homing_offset=-1763, range_min=4873, range_max=6908),
+        "dummy_3": MotorCalibration(id=3, drive_mode=0, homing_offset=0, range_min=100, range_max=200),
+    }
+
+    write_homing_stubs = []
+    write_mins_stubs = []
+    write_maxes_stubs = []
+    expected_ranges = {
+        1: (853, 3056),
+        2: (777, 2812),
+        3: (100, 200),
+    }
+    for motor, cal in calibration.items():
+        write_homing_stubs.append(
+            mock_motors.build_write_stub(
+                *STS_SMS_SERIES_CONTROL_TABLE["Homing_Offset"],
+                cal.id,
+                encode_sign_magnitude(cal.homing_offset, 11),
+            )
+        )
+        write_mins_stubs.append(
+            mock_motors.build_write_stub(
+                *STS_SMS_SERIES_CONTROL_TABLE["Min_Position_Limit"],
+                cal.id,
+                expected_ranges[cal.id][0],
+            )
+        )
+        write_maxes_stubs.append(
+            mock_motors.build_write_stub(
+                *STS_SMS_SERIES_CONTROL_TABLE["Max_Position_Limit"],
+                cal.id,
+                expected_ranges[cal.id][1],
+            )
+        )
+
+    bus = FeetechMotorsBus(port=mock_motors.port, motors=dummy_motors)
+    bus.connect(handshake=False)
+    bus.write_calibration(calibration)
+
+    assert all(mock_motors.stubs[stub].wait_called() for stub in write_homing_stubs)
+    assert all(mock_motors.stubs[stub].wait_called() for stub in write_mins_stubs)
+    assert all(mock_motors.stubs[stub].wait_called() for stub in write_maxes_stubs)

@@ -115,6 +115,7 @@ _feetech_sdk_available = is_package_available("feetech-servo-sdk", import_name="
 _reachy2_sdk_available = is_package_available("reachy2_sdk")
 _can_available = is_package_available("python-can", "can")
 _unitree_sdk_available = is_package_available("unitree-sdk2py", "unitree_sdk2py")
+_pythonosc_available = is_package_available("python-osc", import_name="pythonosc")
 
 # Data / serialization
 _pandas_available = is_package_available("pandas")
